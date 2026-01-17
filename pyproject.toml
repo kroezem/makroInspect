@@ -1,0 +1,52 @@
+[project]
+name = "makroinspect"
+version = "0.1.0"
+description = "High performance anomaly detection with SAM3 and DINOv2"
+requires-python = "==3.12.*"
+
+dependencies = [
+    # 1. SAM3 Requirement (Locked to the dev branch)
+    "transformers>=5.0.0.dev0",
+
+    # 2. Standard Libs
+    "ipykernel>=6.29.0",
+    "opencv-python>=4.9.0",
+    "pillow>=10.2.0",
+    "ruamel-yaml>=0.17.0",
+    "sqlmodel>=0.0.16",
+    "scikit-learn>=1.4.0",
+
+    # 3. GPU Stack (Pinned for stability on Windows)
+    "torch==2.5.1",
+    "torchvision==0.20.1",
+    "xformers==0.0.28.post3",
+    "triton",
+]
+
+# --- SOURCES ---
+
+# Define the CUDA 12.4 Index (Backward compatible with your 12.6 drivers)
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+# Direct transformers to the development branch for 5.0.0.dev0
+transformers = { git = "https://github.com/huggingface/transformers.git", branch = "main" }
+
+# Force GPU versions on Windows to prevent CPU-fallback
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32'" }
+]
+torchvision = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32'" }
+]
+xformers = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32'" }
+]
+
+# The Windows Triton Wheel (Essential for xFormers/Flash Attention)
+triton = [
+    { url = "https://github.com/woct0rdho/triton-windows/releases/download/v3.1.0-windows.post5/triton-3.1.0-cp312-cp312-win_amd64.whl", marker = "sys_platform == 'win32'" }
+]

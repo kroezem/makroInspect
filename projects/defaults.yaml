@@ -1,0 +1,35 @@
+segmentation:
+  description: "object"
+  enabled: true
+  batch_size: 8
+  multi_instance: true
+  apply_mask: false
+
+crop:
+  reference_id: "000000000_00"
+  align_PCA: true
+  angle_candidates: [ 0,180 ]
+  offset_rotation: 0
+  scale: 1.0
+
+transformer:
+  repo: "facebookresearch/dinov2"
+  model: "dinov2_vitb14"
+  token_budget: 20480
+  patch_size: 14
+  output_resolution: [ 64,64 ]
+
+anomaly_score:
+  method: mean
+  min_percentile: 99.0
+  max_percentile: 99.9
+
+memory_bank:
+  max_mb: 8192
+  replacement:
+    policy: coverage
+    interval: 128
+
+
+
+
