@@ -1,0 +1,7 @@
+/.idea/
+/.venv/
+/dataset/
+/old/
+
+/projects/*
+!projects/defaults.yaml
