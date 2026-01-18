@@ -1,5 +1,5 @@
 segmentation:
-  description: "object"
+  description: "electronic"
   enabled: true
   multi_instance: true
   apply_mask: false
@@ -9,7 +9,7 @@ segmentation:
 crop:
   reference_id: "000000000_00"
   align_PCA: true
-  angle_candidates: [ 0,180 ]
+  angle_candidates: [0, 180]
   offset_rotation: 0
   scale: 1.0
   batch_limit: 128
@@ -17,7 +17,7 @@ crop:
 transformer:
   token_budget: 294912
   patch_size: 14
-  map_resolution: [ 48,48 ]   # ROWS, COLS
+  map_resolution: [48, 32]
 
 anomaly_score:
   cmap: "MAGMA"   # Options: MAGMA, JET, TURBO, INFERNO, PLASMA, VIRIDIS

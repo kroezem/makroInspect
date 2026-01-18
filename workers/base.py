@@ -1,33 +1,36 @@
 from abc import ABC, abstractmethod
-from typing import Any
-from core.project import Project
+from typing import List
+
+from core.scheduler import Job
+from core.telemetry import WorkerStats
 
 
 class BaseWorker(ABC):
+    """
+    Base class for dumb workers.
+
+    Workers are purely functional:
+    - Input: List of Project objects + Job config
+    - Output: WorkerStats object
+    - No internal looping for bursts
+    - No print statements (telemetry handles output)
+    - Run one atomic batch and return control immediately
+    """
+
     def __init__(self, device: str = "cuda"):
         self.device = device
-        self.model = None
-        self._is_loaded = False
-
-    def ensure_loaded(self):
-        """Lazy loading. Only loads the heavy model if not already in VRAM."""
-        if not self._is_loaded:
-            print(f"[{self.__class__.__name__}] Loading model to {self.device}...")
-            self.load_model()
-            self._is_loaded = True
 
     @abstractmethod
-    def load_model(self):
+    def process(self, projects: List, job: Job, models=None) -> WorkerStats:
         """
-        Implementation must load the specific model (SAM, DINO, etc.)
-        and assign it to self.model.
-        """
-        pass
+        Execute a single atomic batch.
 
-    @abstractmethod
-    def process(self, project: Project) -> int:
-        """
-        Asks the project for pending work and processes a batch.
-        Returns the number of items processed.
+        Args:
+            projects: List of Project objects to process across
+            job: Job config from scheduler with limits and priority bounds
+            models: Optional ModelManager for GPU workers
+
+        Returns:
+            WorkerStats with processing results
         """
         pass
