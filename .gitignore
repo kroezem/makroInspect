@@ -3,5 +3,10 @@
 /dataset/
 /old/
 
-/projects/*
+/prompt.txt
+
+projects/**
+!projects/
+!projects/*/
 !projects/defaults.yaml
+!projects/*/config.yaml

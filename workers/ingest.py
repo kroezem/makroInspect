@@ -2,121 +2,131 @@ import hashlib
 import shutil
 import time
 from pathlib import Path
-from typing import List, Tuple
-from datetime import datetime
-
 from sqlmodel import select
 
-from core.project import Project
 from core.database import Image
-from workers.base import BaseWorker
+from core.project import Project
+from core.telemetry import IngestStats
 
-ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
+class IngestWorker:
+    """
+    Ingest worker - scans inbox and imports new images.
 
-class IngestWorker(BaseWorker):
-    def load_model(self):
-        pass
+    Returns IngestStats, no print statements.
+    """
 
-    def process(self, project: Project) -> int:
-        inbox_dir = project.root / "inbox"
-        if not inbox_dir.exists():
-            return 0
+    VALID_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'}
 
-        candidates = self._scan_inbox(inbox_dir)
-        if not candidates:
-            return 0
+    def process(self, project: Project) -> IngestStats:
+        """
+        Process a single project's inbox.
+        Returns IngestStats with results.
+        """
+        start_time = time.perf_counter()
+        inbox = project.inbox_path
+        raw_dir = project.root / "artifacts" / "raw"
 
-        count = 0
+        stats = IngestStats(project_name=project.root.name)
 
-        # Process individually to isolate failures and manage transactions safely
-        for station_id, file_path in candidates:
-            with project.get_session() as session:
-                try:
-                    # 1. Deduplicate
-                    file_hash = self._sha256(file_path)
-                    existing = session.exec(select(Image).where(Image.hash == file_hash)).first()
+        files = self._scan_inbox(inbox)
+        if not files:
+            return stats
 
-                    if existing:
-                        try:
-                            file_path.unlink()
-                        except OSError:
-                            pass
-                        continue
+        ready_files = self._filter_locked(files)
+        if not ready_files:
+            return stats
 
-                    # 2. Stage DB Record
-                    ext = self._normalize_ext(file_path.suffix)
-                    img = Image(
-                        hash=file_hash,
-                        station_id=station_id,
-                        extension=ext.lstrip("."),
-                        ingested_at=datetime.utcnow()
-                    )
-                    session.add(img)
+        stats.is_sprint = len(ready_files) <= 8
+        priority_val = 10 if stats.is_sprint else 5
 
-                    # Flush to generate ID, but do not commit yet
-                    session.flush()
-                    session.refresh(img)
+        for src_path in ready_files:
+            result = self._ingest_file(project, src_path, raw_dir, priority_val)
+            if result == "success":
+                stats.items_processed += 1
+            elif result == "duplicate":
+                stats.duplicates += 1
+            elif result == "error":
+                stats.errors += 1
 
-                    # 3. Move File
-                    dst_path = project.get_raw_path(img)
-                    dst_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(file_path), str(dst_path))
+        stats.duration_ms = (time.perf_counter() - start_time) * 1000
+        return stats
 
-                    # 4. Finalize
-                    session.commit()
-                    count += 1
+    def _scan_inbox(self, inbox: Path) -> list:
+        """Recursively scan inbox for valid image files."""
+        files = []
+        for p in inbox.rglob("*"):
+            if p.is_file() and p.suffix.lower() in self.VALID_EXTENSIONS and not p.name.startswith('.'):
+                files.append(p)
+        return files
 
-                except Exception as e:
-                    print(f"[Ingest] Failed {file_path.name}: {e}")
-                    # Session automatically rolls back on exit if commit() wasn't reached
-                    continue
+    def _filter_locked(self, files: list) -> list:
+        """Filter out files that are still being written."""
+        ready = []
+        for p in files:
+            try:
+                p.rename(p)
+                ready.append(p)
+            except OSError:
+                continue
+        return ready
 
-        return count
+    def _calculate_hash(self, path: Path) -> str:
+        """Calculate SHA256 hash of file."""
+        hasher = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
 
-    def _scan_inbox(self, inbox_dir: Path) -> List[Tuple[str, Path]]:
-        items = []
-
-        def is_valid(p: Path):
-            return (p.is_file() and
-                    not p.name.startswith(".") and
-                    self._normalize_ext(p.suffix) in ALLOWED_EXT)
-
-        # Root files -> 'root'
-        for p in inbox_dir.iterdir():
-            if is_valid(p) and self._is_stable(p):
-                items.append(("root", p))
-
-        # Subfolders -> 'station_id'
-        for d in inbox_dir.iterdir():
-            if d.is_dir() and not d.name.startswith("."):
-                station = d.name
-                for p in d.iterdir():
-                    if is_valid(p) and self._is_stable(p):
-                        items.append((station, p))
-
-        items.sort(key=lambda x: x[1].stat().st_mtime)
-        return items
-
-    @staticmethod
-    def _is_stable(p: Path, min_age: float = 0.75) -> bool:
+    def _ingest_file(self, project: Project, src_path: Path, raw_dir: Path, priority: int) -> str:
+        """
+        Ingest a single file.
+        Returns: "success", "duplicate", or "error"
+        """
         try:
-            st = p.stat()
-            age = time.time() - st.st_mtime
-            return age > min_age and st.st_size > 0
-        except FileNotFoundError:
-            return False
+            file_hash = self._calculate_hash(src_path)
+        except Exception:
+            return "error"
 
-    @staticmethod
-    def _sha256(path: Path) -> str:
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            while chunk := f.read(8192):
-                h.update(chunk)
-        return h.hexdigest()
+        with project.get_session() as session:
+            stmt = select(Image).where(Image.hash == file_hash)
+            existing = session.execute(stmt).scalars().first()
 
-    @staticmethod
-    def _normalize_ext(ext: str) -> str:
-        ext = ext.lower()
-        if ext == ".jpeg": return ".jpg"
-        return ext
+            if existing:
+                try:
+                    src_path.unlink()
+                except:
+                    pass
+                return "duplicate"
+
+            station_id = src_path.parent.name if src_path.parent != project.inbox_path else "unknown"
+            extension = src_path.suffix.lower().lstrip(".")
+
+            img = Image(
+                hash=file_hash,
+                extension=extension,
+                station_id=station_id,
+                priority=priority
+            )
+            session.add(img)
+            session.flush()
+
+            safe_name = f"{img.id:09d}.{extension}"
+            dst_path = raw_dir / safe_name
+
+            try:
+                shutil.move(str(src_path), str(dst_path))
+
+                if station_id != "unknown":
+                    try:
+                        src_path.parent.rmdir()
+                    except:
+                        pass
+
+                session.commit()
+                return "success"
+
+            except Exception:
+                session.rollback()
+                return "error"

@@ -1,127 +1,177 @@
+import time
 import torch
 import numpy as np
-from pathlib import Path
+import cv2
 from PIL import Image as PILImage
+from typing import List
 from datetime import datetime
-from transformers import Sam3Processor, Sam3Model
 
 from core.project import Project
 from core.database import Instance
+from core.scheduler import Job
+from core.telemetry import WorkerStats
 from workers.base import BaseWorker
 
 
 class SegmentWorker(BaseWorker):
-    def load_model(self):
-        model_id = "facebook/sam3"
-        print(f"[Segment] Loading SAM3 ({model_id}) to {self.device}...")
+    """
+    Segment worker - runs SAM3 segmentation on images.
 
-        self.processor = Sam3Processor.from_pretrained(model_id)
-        self.model = Sam3Model.from_pretrained(model_id).to(self.device)
-        self.model.eval()
+    Purely functional: returns WorkerStats, no print statements.
+    """
 
-    def process(self, project: Project) -> int:
-        seg_cfg = project.cfg.get("segmentation", {})
-        if not seg_cfg.get("enabled", True):
-            return 0
+    def process(self, projects: List[Project], job: Job, models=None) -> WorkerStats:
+        """
+        Execute a single atomic segmentation batch.
+        """
+        start_time = time.perf_counter()
+        stats = WorkerStats()
 
-        prompt = seg_cfg.get("description", "object")
-        batch_size = int(seg_cfg.get("batch_size", 4))
-        multi_instance = bool(seg_cfg.get("multi_instance", True))
+        all_jobs = self._aggregate_work(projects, job)
+        if not all_jobs:
+            return stats
 
-        jobs = project.get_pending_segmentation(limit=batch_size)
-        if not jobs:
-            return 0
+        batch = all_jobs[:job.batch_limit]
 
-        images_pil = []
-        valid_jobs = []
+        # Set project name from first item in batch
+        if batch:
+            stats.project_name = batch[0][0].root.name
 
-        for img_row in jobs:
-            path = project.get_raw_path(img_row)
+        valid_batch, pil_images, prompts = self._prepare_batch(batch)
+        if not valid_batch:
+            return stats
+
+        results_map = self._run_inference(valid_batch, pil_images, prompts, models)
+
+        stats.items_processed = self._persist_results(valid_batch, results_map)
+        stats.duration_ms = (time.perf_counter() - start_time) * 1000
+
+        return stats
+
+    def _aggregate_work(self, projects: List[Project], job: Job) -> List:
+        """Aggregate pending segmentation work across projects."""
+        all_jobs = []
+        for proj in projects:
+            pending = proj.get_pending_images(min_priority=job.min_priority, limit=job.batch_limit * 2)
+            for img in pending:
+                if img.priority <= job.max_priority:
+                    all_jobs.append((proj, img))
+
+        all_jobs.sort(key=lambda x: (-x[1].priority, x[1].ingested_at))
+        return all_jobs
+
+    def _prepare_batch(self, batch: List) -> tuple:
+        """Prepare images for inference."""
+        pil_images = []
+        prompts = []
+        valid_batch = []
+
+        for proj, img in batch:
+            raw_path = proj.get_raw_path(img)
+            if not raw_path.exists():
+                continue
+
             try:
-                pil = PILImage.open(path).convert("RGB")
-                images_pil.append(pil)
-                valid_jobs.append(img_row)
-            except Exception as e:
-                print(f"[Segment] Read failed {path}: {e}")
+                seg_cfg = proj.cfg.get("segmentation", {})
+                is_enabled = seg_cfg.get("enabled", True)
+                prompt_text = seg_cfg.get("description", "object")
 
-        if not valid_jobs:
-            return 0
+                p_img = PILImage.open(raw_path).convert("RGB")
 
-        # Inference
-        inputs = self.processor(
-            images=images_pil,
-            text=[prompt] * len(images_pil),
-            return_tensors="pt"
-        ).to(self.device)
+                valid_batch.append({
+                    "proj": proj,
+                    "img": img,
+                    "pil": p_img,
+                    "enabled": is_enabled,
+                    "prompt": prompt_text
+                })
 
-        with torch.inference_mode():
-            if self.device == "cuda":
-                with torch.autocast(device_type="cuda", dtype=torch.float16):
-                    outputs = self.model(**inputs)
-            else:
-                outputs = self.model(**inputs)
+                if is_enabled:
+                    pil_images.append(p_img)
+                    prompts.append(prompt_text)
 
-            target_sizes = [img.size[::-1] for img in images_pil]
-            results = self.processor.post_process_instance_segmentation(
-                outputs,
-                target_sizes=target_sizes,
-                threshold=0.5
-            )
+            except Exception:
+                pass
 
-        # Save Results
+        return valid_batch, pil_images, prompts
+
+    def _run_inference(self, valid_batch: List, pil_images: List, prompts: List, models) -> dict:
+        """Run SAM3 inference on enabled images."""
+        results_map = {}
+
+        if not pil_images:
+            return results_map
+
+        model_results = models.segment_batch(pil_images, prompt=prompts)
+        if "cuda" in self.device:
+            torch.cuda.synchronize()
+
+        curr_model_idx = 0
+        for i, item in enumerate(valid_batch):
+            if item["enabled"]:
+                results_map[i] = model_results[curr_model_idx]
+                curr_model_idx += 1
+
+        return results_map
+
+    def _persist_results(self, valid_batch: List, results_map: dict) -> int:
+        """Save segmentation results to DB and disk."""
         count = 0
-        with project.get_session() as session:
-            for i, result in enumerate(results):
-                job = valid_jobs[i]
-                masks = self._extract_masks_numpy(result)
 
-                if masks is not None and masks.size > 0:
-                    if not multi_instance:
-                        union_mask = np.logical_or.reduce(masks, axis=0)
-                        masks = union_mask[None, :, :]
+        for i, item in enumerate(valid_batch):
+            proj, img = item["proj"], item["img"]
 
-                    for idx, mask in enumerate(masks):
-                        instance_id = f"{job.id:09d}_{idx:02d}"
+            masks = self._extract_masks(item, results_map.get(i))
 
-                        # Save Mask
-                        mask_path = project.root / "artifacts" / "masks" / f"{instance_id}.png"
-                        self._save_atomic_mask(mask, mask_path)
+            multi_allowed = proj.cfg.get("segmentation", {}).get("multi_instance", True)
+            if not multi_allowed and len(masks) > 1:
+                masks = masks[:1]
 
-                        # Create Instance
-                        inst = Instance(
-                            id=instance_id,
-                            image_id=job.id,
-                            station_id=job.station_id,
-                            label="unlabeled"
-                        )
-                        session.add(inst)
-                        count += 1
+            with proj.get_session() as session:
+                db_img = session.merge(img)
 
-                # Mark Done (Update timestamp)
-                job.segmented_at = datetime.utcnow()
-                session.merge(job)
+                for m_idx, mask in enumerate(masks):
+                    inst_id = f"{db_img.id:09d}_{m_idx:02d}"
+                    mask_path = proj.root / "artifacts" / "masks" / f"{inst_id}.png"
 
-            session.commit()
+                    if mask.max() <= 1.0:
+                        mask = mask * 255
+                    cv2.imwrite(str(mask_path), mask.astype(np.uint8))
 
-        return len(valid_jobs)
+                    # Determine label from station_id (special inbox folders)
+                    label = "unlabeled"
+                    station = db_img.station_id
+                    SPECIAL_STATIONS = {'_normal': 'normal', '_anomaly': 'anomaly', '_exclude': 'exclude'}
+                    if station in SPECIAL_STATIONS:
+                        label = SPECIAL_STATIONS[station]
 
-    def _save_atomic_mask(self, mask: np.ndarray, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
+                    instance = Instance(
+                        id=inst_id,
+                        image_id=db_img.id,
+                        station_id=db_img.station_id,
+                        priority=db_img.priority,
+                        label=label
+                    )
+                    session.merge(instance)
 
-        tmp_path = path.with_suffix(".tmp.png")
-        img = PILImage.fromarray((mask * 255).astype(np.uint8), mode="L")
-        img.save(tmp_path, optimize=True)
+                db_img.segmented_at = datetime.utcnow()
+                session.add(db_img)
+                session.commit()
+                count += 1
 
-        try:
-            tmp_path.replace(path)
-        except OSError:
-            if path.exists(): path.unlink()
-            tmp_path.rename(path)
+        return count
 
-    def _extract_masks_numpy(self, result) -> np.ndarray:
-        if isinstance(result, dict) and 'masks' in result:
-            m = result['masks']
-            if torch.is_tensor(m):
-                m = m.detach().cpu().numpy()
-            return m.astype(bool)
-        return None
+    def _extract_masks(self, item: dict, result) -> List[np.ndarray]:
+        """Extract masks from inference result or create fallback."""
+        masks = []
+
+        if item["enabled"] and result:
+            masks = result.get('masks', [])
+            if isinstance(masks, torch.Tensor):
+                masks = masks.detach().cpu().numpy()
+
+        if not item["enabled"] or len(masks) == 0:
+            w, h = item["pil"].size
+            masks = [np.ones((h, w), dtype=np.uint8)]
+
+        return masks

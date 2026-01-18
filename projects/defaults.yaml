@@ -1,9 +1,10 @@
 segmentation:
   description: "object"
   enabled: true
-  batch_size: 8
   multi_instance: true
   apply_mask: false
+  batch_limit: 8
+
 
 crop:
   reference_id: "000000000_00"
@@ -11,21 +12,21 @@ crop:
   angle_candidates: [ 0,180 ]
   offset_rotation: 0
   scale: 1.0
+  batch_limit: 128
 
 transformer:
-  repo: "facebookresearch/dinov2"
-  model: "dinov2_vitb14"
-  token_budget: 20480
+  token_budget: 294912
   patch_size: 14
-  output_resolution: [ 64,64 ]
+  map_resolution: [ 48,48 ]   # ROWS, COLS
 
 anomaly_score:
+  cmap: "MAGMA"   # Options: MAGMA, JET, TURBO, INFERNO, PLASMA, VIRIDIS
   method: mean
   min_percentile: 99.0
   max_percentile: 99.9
 
 memory_bank:
-  max_mb: 8192
+  max_tokens: 524288
   replacement:
     policy: coverage
     interval: 128
