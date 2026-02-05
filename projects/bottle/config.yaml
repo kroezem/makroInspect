@@ -2,7 +2,7 @@
 # Segmentation (SAM)
 # -----------------------------------------------------------------------------
 segmentation:
-  prompts: [ "electronic" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
+  prompts: [ "foreground object" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
   enabled: true
   multi_instance: true          # True: each mask = separate instance. False: union all masks.
 
@@ -12,9 +12,9 @@ segmentation:
 crop:
   reference_id: null            # Instance ID for alignment reference (null = use first)
   align_PCA: true               # Enable PCA-based rotation alignment
-  angle_candidates: [ 0, 180 ]    # Rotation angles to try during alignment
+  angle_candidates: [ 0 ]    # Rotation angles to try during alignment
   offset_rotation: 0            # Additional rotation offset (degrees)
-  scale: 1.0                    # Scale factor for crop output
+  scale: .9                   # Scale factor for crop output
 
 # -----------------------------------------------------------------------------
 # Transformer / Embedding
@@ -27,7 +27,7 @@ transformer:
   #   - Tokens per instance (rows * cols)
   #   - Effective batch sizes for embed/score
   patch_size: 14
-  map_resolution: [ 32, 48 ]
+  map_resolution: [ 48, 48 ]
 
 
 # -----------------------------------------------------------------------------

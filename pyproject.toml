@@ -7,7 +7,6 @@ requires-python = "==3.12.*"
 dependencies = [
     # 1. SAM3 Requirement (Locked to the dev branch)
     "transformers>=5.0.0.dev0",
-
     # 2. Standard Libs
     "ipykernel>=6.29.0",
     "opencv-python>=4.9.0",
@@ -15,13 +14,15 @@ dependencies = [
     "ruamel-yaml>=0.17.0",
     "sqlmodel>=0.0.16",
     "scikit-learn>=1.4.0",
-
     # 3. GPU Stack (Pinned for stability on Windows)
     "torch==2.5.1",
     "torchvision==0.20.1",
     "xformers==0.0.28.post3",
     "triton",
-    "accelerate"
+    "accelerate",
+    "matplotlib>=3.10.8",
+    "pandas>=3.0.0",
+    "jupyterlab>=4.5.3",
 ]
 
 # --- SOURCES ---

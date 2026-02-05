@@ -1,36 +1,58 @@
+# -----------------------------------------------------------------------------
+# Segmentation (SAM)
+# -----------------------------------------------------------------------------
 segmentation:
-  description: "food"
+  prompts: [ "foreground object" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
   enabled: true
-  multi_instance: true
-  apply_mask: false
-  batch_limit: 8
+  multi_instance: true          # True: each mask = separate instance. False: union all masks.
 
-
+# -----------------------------------------------------------------------------
+# Crop (PCA Alignment)
+# -----------------------------------------------------------------------------
 crop:
-  reference_id: "000000000_00"
-  align_PCA: true
-  angle_candidates: [0, 180]
-  offset_rotation: 0
-  scale: 1.0
-  batch_limit: 128
+  reference_id: null            # Instance ID for alignment reference (null = use first)
+  align_PCA: true               # Enable PCA-based rotation alignment
+  angle_candidates: [ 0, 180 ]    # Rotation angles to try during alignment
+  offset_rotation: 0            # Additional rotation offset (degrees)
+  scale: 0.9                    # Scale factor for crop output
 
+# -----------------------------------------------------------------------------
+# Transformer / Embedding
+# -----------------------------------------------------------------------------
 transformer:
-  token_budget: 294912
+  # Output feature map size [rows, cols]
+  # This determines:
+  #   - Crop output size = map_resolution * patch_size (from system config)
+  #   - Heatmap resolution
+  #   - Tokens per instance (rows * cols)
+  #   - Effective batch sizes for embed/score
   patch_size: 14
-  map_resolution: [48, 32]
+  map_resolution: [ 32, 48 ]
 
-anomaly_score:
-  cmap: "MAGMA"   # Options: MAGMA, JET, TURBO, INFERNO, PLASMA, VIRIDIS
-  method: mean
-  min_percentile: 99.0
-  max_percentile: 99.9
 
+# -----------------------------------------------------------------------------
+# Memory Bank
+# -----------------------------------------------------------------------------
 memory_bank:
-  max_tokens: 524288
-  replacement:
-    policy: coverage
-    interval: 128
+  max_gb: 6
+  selection_method: "k_center"  # k_center, random
 
 
+# -----------------------------------------------------------------------------
+# Heatmap post-processing
+# -----------------------------------------------------------------------------
+refine:
+  method: "gaussian"
+  gaussian_sigma: 5
 
+# -----------------------------------------------------------------------------
+# Anomaly Scoring
+# -----------------------------------------------------------------------------
+score:
+  # Aggregation method for computing scalar score from heatmap
+  method: "mean"                # mean, max, median, min
 
+  # Percentile bounds for score computation
+  # Score = aggregation of heatmap values between these percentiles
+  min_percentile: 99.9
+  max_percentile: 99.999

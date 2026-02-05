@@ -2,8 +2,8 @@
 # Segmentation (SAM)
 # -----------------------------------------------------------------------------
 segmentation:
-  prompts: [ "electronic" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
-  enabled: true
+  prompts: [ "brush" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
+  enabled: false
   multi_instance: true          # True: each mask = separate instance. False: union all masks.
 
 # -----------------------------------------------------------------------------
@@ -27,7 +27,7 @@ transformer:
   #   - Tokens per instance (rows * cols)
   #   - Effective batch sizes for embed/score
   patch_size: 14
-  map_resolution: [ 32, 48 ]
+  map_resolution: [ 48, 24 ]
 
 
 # -----------------------------------------------------------------------------

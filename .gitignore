@@ -1,13 +1,13 @@
 /.idea/
 /.claude/
 /.venv/
-/dataset/
-/old/
+/.old/
 
-/prompt.txt
+/datasets/
+/artifacts/
 
 projects/**
 !projects/
 !projects/*/
-!projects/defaults.yaml
 !projects/*/config.yaml
+
