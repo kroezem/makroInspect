@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 segmentation:
   prompts: [ "zipper" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
-  enabled: true
+  enabled: false
   multi_instance: true          # True: each mask = separate instance. False: union all masks.
 
 # -----------------------------------------------------------------------------

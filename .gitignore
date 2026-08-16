@@ -1,13 +1,23 @@
+# IDE and tools
 /.idea/
 /.claude/
 /.venv/
 /.old/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Large generated data (regenerable)
 /datasets/
 /artifacts/
 
+# Project data (keep only configs)
 projects/**
 !projects/
 !projects/*/
 !projects/*/config.yaml
-

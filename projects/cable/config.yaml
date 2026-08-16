@@ -2,16 +2,16 @@
 # Segmentation (SAM)
 # -----------------------------------------------------------------------------
 segmentation:
-  prompts: [ "foreground object" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
+  prompts: [ "object" ]        # Text prompt for SAM (e.g., "capsule", "PCB component")
   enabled: false
-  multi_instance: true          # True: each mask = separate instance. False: union all masks.
+  multi_instance: false          # True: each mask = separate instance. False: union all masks.
 
 # -----------------------------------------------------------------------------
 # Crop (PCA Alignment)
 # -----------------------------------------------------------------------------
 crop:
   reference_id: null            # Instance ID for alignment reference (null = use first)
-  align_PCA: true               # Enable PCA-based rotation alignment
+  align_PCA: false               # Enable PCA-based rotation alignment
   angle_candidates: [ 0 ]    # Rotation angles to try during alignment
   offset_rotation: 0            # Additional rotation offset (degrees)
   scale: 1.0                    # Scale factor for crop output
