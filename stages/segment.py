@@ -12,11 +12,17 @@ warnings.filterwarnings("ignore", message=".*xFormers is available.*")
 import numpy as np
 import pandas as pd
 import torch
+import torch
 from pathlib import Path
 from PIL import Image as PILImage
 from tqdm import tqdm
 
 from core.paths import ProjectPaths
+
+
+class SegmentationError(Exception):
+    """Raised when segmentation fails to produce masks for images."""
+    pass
 
 
 def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFrame:
@@ -40,6 +46,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     # If disabled, generate one blank mask per image and return
     if not enabled:
         print("✓ Segmentation disabled, writing blank _00 masks")
+        print()
 
         rows = []
         for entry in tqdm(image_entries, desc="Blank masks", unit="img"):
@@ -70,6 +77,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
                 "segment_prompt": None,
             })
 
+        print()
         out = pd.DataFrame(rows)
         print(f"  ✓ Created {len(out)} blank instances")
         return out
@@ -88,6 +96,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     print(f"  Device: {device}")
     print(f"  Found {len(image_entries)} images")
 
+    print()
     print("  Loading SAM3...")
     from transformers import Sam3Processor, Sam3Model
 
@@ -99,14 +108,21 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     ).to(device)
     model.eval()
     print("  ✓ SAM3 loaded")
+    print()
 
     # Key: (split, label, stem) -> list[(mask, prompt)]
     all_masks: dict[tuple[str, str, str], list[tuple[np.ndarray, str]]] = {}
+
+    # Track all images we attempt to segment
+    all_image_keys: set[tuple[str, str, str]] = {
+        (e["split"], e["label"], e["stem"]) for e in image_entries
+    }
 
     batch_size = 8
 
     for prompt in prompts:
         print(f"  Processing prompt: '{prompt}'")
+        print()
 
         pbar = tqdm(total=len(image_entries), desc=f"  '{prompt}'", unit="img")
         for i in range(0, len(image_entries), batch_size):
@@ -156,10 +172,22 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
                     all_masks[key].append((mask, prompt))
 
         pbar.close()
+        print()
 
-    # Save masks and build registry (add progress + remove optimize=True)
+    # Check for images that got no masks from any prompt
+    images_without_masks = all_image_keys - set(all_masks.keys())
+    if images_without_masks:
+        failed_list = sorted(f"{s}/{l}/{stem}" for s, l, stem in images_without_masks)
+        raise SegmentationError(
+            f"Segmentation enabled but no masks found for {len(failed_list)} image(s):\n"
+            + "\n".join(f"  - {img}" for img in failed_list[:10])
+            + (f"\n  ... and {len(failed_list) - 10} more" if len(failed_list) > 10 else "")
+        )
+
+    # Save masks and build registry
     total_masks = sum(len(v) for v in all_masks.values())
     print(f"  Saving {total_masks} masks...")
+    print()
 
     rows = []
     save_pbar = tqdm(total=total_masks, desc="  Saving masks", unit="mask")
@@ -185,6 +213,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
                 })
     finally:
         save_pbar.close()
+        print()
 
     out = pd.DataFrame(rows)
 

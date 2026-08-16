@@ -69,12 +69,13 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     # Load pooled embeddings for selection (mean over spatial dims)
     print()
     print("  Loading pooled embeddings for selection...")
+    print()
 
     instance_ids = train_good["instance_id"].tolist()
     pooled = []
     valid_ids = []
 
-    for instance_id in tqdm(instance_ids, desc="  Loading"):
+    for instance_id in tqdm(instance_ids, desc="  Loading", unit="inst"):
         row = train_good[train_good["instance_id"] == instance_id].iloc[0]
         embed_path = paths.embedding(row["split"], row["label"], instance_id)
 
@@ -86,6 +87,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
         pooled.append(pooled_embed)
         valid_ids.append(instance_id)
 
+    print()
     pooled = np.stack(pooled).astype(np.float32)  # (N, C)
     print(f"  Loaded {len(pooled)} pooled embeddings")
 
@@ -93,7 +95,9 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     print()
     if selection_method == "k_center":
         print("  Running k-center greedy selection...")
+        print()
         selected_indices = _select_kcenter_cosine_gpu(pooled, k)
+        print()
     else:
         print("  Running random selection...")
         selected_indices = _select_random(pooled, k)
@@ -104,14 +108,16 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     # Load full patch embeddings for selected instances
     print()
     print("  Loading patch embeddings for bank...")
+    print()
 
     bank_patches = []
-    for instance_id in tqdm(selected_ids, desc="  Loading"):
+    for instance_id in tqdm(selected_ids, desc="  Loading", unit="inst"):
         row = train_good[train_good["instance_id"] == instance_id].iloc[0]
         embed_path = paths.embedding(row["split"], row["label"], instance_id)
         embed = np.load(embed_path)
         bank_patches.append(embed)
 
+    print()
     bank_patches = np.stack(bank_patches).astype(np.float16)  # (K, H, W, C)
     print(f"  Bank shape: {bank_patches.shape}")
 

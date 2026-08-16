@@ -43,6 +43,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     print(f"  Device: {device}")
     print(f"  Patch size: {patch_size}")
     print(f"  Batch size: {batch_size}")
+    print(f"  Instances: {len(registry)}")
 
     # Initialize model
     embedder = _DinoEmbedder(device=device, patch_size=patch_size)
@@ -57,7 +58,9 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     total_done = 0
     total_skipped = 0
 
-    for i in tqdm(range(0, len(instances), batch_size), desc="Embedding"):
+    print()
+    pbar = tqdm(total=len(instances), desc="Embedding", unit="inst")
+    for i in range(0, len(instances), batch_size):
         batch_instances = instances[i:i + batch_size]
         batch_indices = indices[i:i + batch_size]
 
@@ -104,6 +107,11 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
             registry.loc[idx, "embed_shape"] = json.dumps([H, W, C])
             total_done += 1
 
+        pbar.update(len(batch_instances))
+
+    pbar.close()
+    print()
+
     print(f"  ✓ Embedded {total_done} instances")
     if total_skipped:
         print(f"  Skipped: {total_skipped} instances")
@@ -133,7 +141,6 @@ class _DinoEmbedder:
         self._model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
         self._model.to(self.device).half().eval()
 
-
         self._mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(self.device).half()
         self._std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(self.device).half()
 
@@ -143,7 +150,6 @@ class _DinoEmbedder:
             self._model.forward_features(dummy)
 
         print("  ✓ DINOv2 loaded")
-        print()
 
     @torch.no_grad()
     def embed_batch(self, images: List[np.ndarray]) -> Optional[np.ndarray]:

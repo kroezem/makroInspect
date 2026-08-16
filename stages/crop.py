@@ -74,6 +74,8 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
         if ref_mask is not None:
             print("  Reference mask loaded for orientation alignment")
 
+    print()
+
     # Prepare output columns (always reset these like your current version)
     registry["_stem"] = registry["instance_id"].apply(_get_stem)
     registry["crop_iou"] = np.nan
@@ -163,6 +165,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
                         )
     finally:
         pbar.close()
+        print()
 
     registry = registry.drop(columns=["_stem"])
 

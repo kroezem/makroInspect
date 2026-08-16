@@ -67,11 +67,13 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
 
     print()
     print("  Computing instance heatmaps...")
+    print()
 
     instances = registry.to_dict("records")
     indices = registry.index.tolist()
 
-    for i in tqdm(range(0, len(instances), batch_size), desc="  Heatmaps"):
+    pbar = tqdm(total=len(instances), desc="  Heatmaps", unit="inst")
+    for i in range(0, len(instances), batch_size):
         batch_instances = instances[i:i + batch_size]
         batch_indices = indices[i:i + batch_size]
 
@@ -105,16 +107,22 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
             heatmap_path.parent.mkdir(parents=True, exist_ok=True)
             np.save(heatmap_path, heatmaps[j].astype(np.float32))
 
+        pbar.update(len(batch_instances))
+
+    pbar.close()
+    print()
+
     # === Reverted heatmaps ===
 
     print()
     print("  Computing reverted heatmaps...")
+    print()
 
     # Group by source image
     registry["_stem"] = registry["instance_id"].apply(_get_stem)
     grouped = registry.groupby(["split", "label", "_stem"])
 
-    for (split, label, stem), group in tqdm(grouped, desc="  Reverting"):
+    for (split, label, stem), group in tqdm(grouped, desc="  Reverting", unit="img"):
         # Load crop metadata for transforms
         meta_path = paths.crop_metadata(split, label, stem)
         if not meta_path.exists():
@@ -165,6 +173,8 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
         reverted_path = paths.heatmap_reverted(split, label, stem)
         reverted_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(reverted_path, composite)
+
+    print()
 
     registry = registry.drop(columns=["_stem"])
 

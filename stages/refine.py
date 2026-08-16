@@ -71,8 +71,10 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
     # Build refiner
     refiner = _build_refiner(refine_cfg, method)
 
+    print()
+
     # Process each heatmap
-    for heatmap_path in tqdm(heatmap_files, desc="  Refining"):
+    for heatmap_path in tqdm(heatmap_files, desc="  Refining", unit="file"):
         # Parse path: reverted/{split}/{label}/{stem}.npy
         rel_path = heatmap_path.relative_to(reverted_dir)
         split = rel_path.parts[0]
@@ -95,6 +97,7 @@ def process(paths: ProjectPaths, cfg: dict, registry: pd.DataFrame) -> pd.DataFr
         out_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(out_path, refined.astype(np.float32))
 
+    print()
     print(f"  ✓ Refined {len(heatmap_files)} heatmaps")
     return registry
 
