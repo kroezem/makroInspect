@@ -1,11 +1,14 @@
 """
 Registry management for instances.csv and runs.csv.
-Defines schemas and provides I/O functions.
+
+Defines schemas and provides I/O functions for tracking instances
+through the pipeline and recording run results.
 """
 
 import csv
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -63,7 +66,7 @@ def load_instances_base(paths: ProjectPaths) -> pd.DataFrame:
     return pd.read_csv(paths.instances_base)
 
 
-def save_instances_base(df: pd.DataFrame, paths: ProjectPaths):
+def save_instances_base(df: pd.DataFrame, paths: ProjectPaths) -> None:
     """Save instances.csv to artifacts folder."""
     paths.instances_base.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(paths.instances_base, index=False)
@@ -77,14 +80,14 @@ def load_run_instances(paths: ProjectPaths, run_id: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def save_run_instances(df: pd.DataFrame, paths: ProjectPaths, run_id: str):
+def save_run_instances(df: pd.DataFrame, paths: ProjectPaths, run_id: str) -> None:
     """Save instances.csv to a run folder."""
     path = paths.run_instances(run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
 
 
-def create_empty_runs_csv(paths: ProjectPaths):
+def create_empty_runs_csv(paths: ProjectPaths) -> None:
     """Create runs.csv with headers if it doesn't exist."""
     if paths.runs_csv.exists():
         return
@@ -101,7 +104,7 @@ def load_runs(paths: ProjectPaths) -> pd.DataFrame:
     return pd.read_csv(paths.runs_csv)
 
 
-def append_run(paths: ProjectPaths, metrics: dict):
+def append_run(paths: ProjectPaths, metrics: dict[str, Any]) -> None:
     """Append a row to runs.csv."""
     create_empty_runs_csv(paths)
 

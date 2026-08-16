@@ -23,6 +23,7 @@ dependencies = [
     "matplotlib>=3.10.8",
     "pandas>=3.0.0",
     "jupyterlab>=4.5.3",
+    "pandas-stubs~=3.0.0",
 ]
 
 # --- SOURCES ---

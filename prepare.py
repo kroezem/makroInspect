@@ -1,13 +1,17 @@
 """
 Initialize projects from various dataset sources.
 
-Usage:
+Usage (CLI):
     uv run prepare.py visa capsules           # Single VisA category
     uv run prepare.py visa --all              # All VisA categories
     uv run prepare.py mvtec_ad bottle         # Single MVTec AD category
     uv run prepare.py mvtec_ad --all          # All MVTec AD categories
     uv run prepare.py mvtec_loco pushpins     # Single MVTec LOCO category
     uv run prepare.py mvtec_ad2 can           # Single MVTec AD2 category
+
+Usage (Python):
+    from prepare import prepare_project
+    paths = prepare_project("visa", "capsules")
 
 Creates:
     projects/{project}/config.yaml        # Permanent config
@@ -296,8 +300,6 @@ def cmd_visa(args):
             init_visa_project(category, visa_root)
         except Exception as e:
             print(f"❌ Error processing {category}: {e}")
-            import traceback
-            traceback.print_exc()
 
     print()
     print("=" * 60)
@@ -491,85 +493,140 @@ def init_mvtec_project(category: str, category_dir: Path, project_name: str | No
         print(f"    Defect types:    {', '.join(sorted(defect_types))}")
 
 
-def cmd_mvtec_ad(args):
-    """Handle mvtec_ad subcommand."""
+def _run_mvtec_command(args, url_dict: dict, dataset_name: str):
+    """Generic handler for MVTec-style dataset subcommands."""
     if args.all:
-        categories = sorted(MVTEC_AD_URLS.keys())
+        categories = sorted(url_dict.keys())
         print(f"Processing {len(categories)} categories: {', '.join(categories)}")
     elif args.category:
         categories = [args.category]
     else:
         print("Error: specify a category or use --all")
-        print(f"Available categories: {', '.join(sorted(MVTEC_AD_URLS.keys()))}")
+        print(f"Available categories: {', '.join(sorted(url_dict.keys()))}")
         return
 
     for category in categories:
         try:
-            category_dir = download_mvtec_category(category, MVTEC_AD_URLS, "mvtec_ad")
+            category_dir = download_mvtec_category(category, url_dict, dataset_name)
             init_mvtec_project(category, category_dir)
         except Exception as e:
             print(f"❌ Error processing {category}: {e}")
-            import traceback
-            traceback.print_exc()
 
     print()
     print("=" * 60)
     print("Done!")
     print("=" * 60)
+
+
+def cmd_mvtec_ad(args):
+    """Handle mvtec_ad subcommand."""
+    _run_mvtec_command(args, MVTEC_AD_URLS, "mvtec_ad")
 
 
 def cmd_mvtec_loco(args):
     """Handle mvtec_loco subcommand."""
-    if args.all:
-        categories = sorted(MVTEC_LOCO_URLS.keys())
-        print(f"Processing {len(categories)} categories: {', '.join(categories)}")
-    elif args.category:
-        categories = [args.category]
-    else:
-        print("Error: specify a category or use --all")
-        print(f"Available categories: {', '.join(sorted(MVTEC_LOCO_URLS.keys()))}")
-        return
-
-    for category in categories:
-        try:
-            category_dir = download_mvtec_category(category, MVTEC_LOCO_URLS, "mvtec_loco")
-            init_mvtec_project(category, category_dir)  # No prefix
-        except Exception as e:
-            print(f"❌ Error processing {category}: {e}")
-            import traceback
-            traceback.print_exc()
-
-    print()
-    print("=" * 60)
-    print("Done!")
-    print("=" * 60)
+    _run_mvtec_command(args, MVTEC_LOCO_URLS, "mvtec_loco")
 
 
 def cmd_mvtec_ad2(args):
     """Handle mvtec_ad2 subcommand."""
-    if args.all:
-        categories = sorted(MVTEC_AD2_URLS.keys())
-        print(f"Processing {len(categories)} categories: {', '.join(categories)}")
-    elif args.category:
-        categories = [args.category]
-    else:
-        print("Error: specify a category or use --all")
-        print(f"Available categories: {', '.join(sorted(MVTEC_AD2_URLS.keys()))}")
-        return
+    _run_mvtec_command(args, MVTEC_AD2_URLS, "mvtec_ad2")
 
-    for category in categories:
-        try:
+
+# =============================================================================
+# Unified Python API
+# =============================================================================
+
+def prepare_project(
+    source: str,
+    category: str,
+    *,
+    download: bool = True,
+) -> ProjectPaths:
+    """
+    Initialize a project from a dataset source.
+
+    This is the primary entry point for notebook usage.
+
+    Args:
+        source: Dataset source ("visa", "mvtec_ad", "mvtec_loco", "mvtec_ad2")
+        category: Category name (e.g., "capsules", "bottle", "pushpins")
+        download: If True, download dataset if not present
+
+    Returns:
+        ProjectPaths object for the initialized project
+
+    Raises:
+        ValueError: If source is unknown or category is invalid
+        FileNotFoundError: If download=False and dataset not found
+
+    Example:
+        >>> from prepare import prepare_project
+        >>> paths = prepare_project("visa", "capsules")
+        >>> print(paths.project_root)
+    """
+    source = source.lower()
+
+    if source == "visa":
+        if download:
+            visa_root = download_visa()
+        else:
+            visa_root = DATASETS_DIR / "visa"
+            if not visa_root.exists():
+                raise FileNotFoundError(f"VisA dataset not found at {visa_root}")
+
+        available = get_visa_categories(visa_root)
+        if category not in available:
+            raise ValueError(f"Unknown VisA category '{category}'. Available: {', '.join(available)}")
+
+        init_visa_project(category, visa_root)
+
+    elif source == "mvtec_ad":
+        if category not in MVTEC_AD_URLS:
+            raise ValueError(f"Unknown MVTec AD category '{category}'. Available: {', '.join(sorted(MVTEC_AD_URLS.keys()))}")
+
+        if download:
+            category_dir = download_mvtec_category(category, MVTEC_AD_URLS, "mvtec_ad")
+        else:
+            category_dir = DATASETS_DIR / "mvtec_ad" / category
+            if not category_dir.exists():
+                raise FileNotFoundError(f"MVTec AD category not found at {category_dir}")
+
+        init_mvtec_project(category, category_dir)
+
+    elif source == "mvtec_loco":
+        if category not in MVTEC_LOCO_URLS:
+            raise ValueError(f"Unknown MVTec LOCO category '{category}'. Available: {', '.join(sorted(MVTEC_LOCO_URLS.keys()))}")
+
+        if download:
+            category_dir = download_mvtec_category(category, MVTEC_LOCO_URLS, "mvtec_loco")
+        else:
+            category_dir = DATASETS_DIR / "mvtec_loco" / category
+            if not category_dir.exists():
+                raise FileNotFoundError(f"MVTec LOCO category not found at {category_dir}")
+
+        init_mvtec_project(category, category_dir)
+
+    elif source == "mvtec_ad2":
+        if category not in MVTEC_AD2_URLS:
+            raise ValueError(f"Unknown MVTec AD2 category '{category}'. Available: {', '.join(sorted(MVTEC_AD2_URLS.keys()))}")
+
+        if download:
             category_dir = download_mvtec_category(category, MVTEC_AD2_URLS, "mvtec_ad2")
-            init_mvtec_project(category, category_dir)  # No prefix
-        except Exception as e:
-            print(f"❌ Error processing {category}: {e}")
-            import traceback
-            traceback.print_exc()
+        else:
+            category_dir = DATASETS_DIR / "mvtec_ad2" / category
+            if not category_dir.exists():
+                raise FileNotFoundError(f"MVTec AD2 category not found at {category_dir}")
 
-    print()
-    print("=" * 60)
-    print("Done!")
-    print("=" * 60)
+        init_mvtec_project(category, category_dir)
+
+    else:
+        raise ValueError(
+            f"Unknown source '{source}'. "
+            f"Available: visa, mvtec_ad, mvtec_loco, mvtec_ad2"
+        )
+
+    return ProjectPaths(category)
 
 
 # =============================================================================

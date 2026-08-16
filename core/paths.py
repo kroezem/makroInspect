@@ -36,12 +36,33 @@ CONFIG_DIR = REPO_ROOT / "config"
 
 
 class ProjectPaths:
-    """All paths for a single project."""
+    """
+    Centralized path management for a single makroInspect project.
 
-    def __init__(self, project: str):
+    All artifact and project paths are constructed through this class to ensure
+    consistency and prevent path string duplication across the codebase.
+
+    Attributes:
+        project: The project name (e.g., "capsules")
+        project_root: Permanent project folder (projects/{project}/)
+        artifacts_root: Regenerable artifacts folder (artifacts/{project}/)
+
+    Example:
+        >>> paths = ProjectPaths("capsules")
+        >>> paths.data_dir
+        PosixPath('artifacts/capsules/data')
+        >>> paths.mask("train", "good", "001_00")
+        PosixPath('artifacts/capsules/masks/train/good/001_00.png')
+    """
+
+    project: str
+    project_root: Path
+    artifacts_root: Path
+
+    def __init__(self, project: str) -> None:
         self.project = project
-        self.project_root = PROJECTS_DIR / project  # Permanent
-        self.artifacts_root = ARTIFACTS_DIR / project  # Regenerable
+        self.project_root = PROJECTS_DIR / project
+        self.artifacts_root = ARTIFACTS_DIR / project
 
     # === Data (input, lives in artifacts) ===
 
@@ -159,11 +180,8 @@ class ProjectPaths:
     # === Helpers ===
 
     def exists(self) -> bool:
-        """Check if project config exists (the permanent part)."""
+        """Check if project exists (project folder and config file)."""
         return self.project_root.exists() and self.config.exists()
-
-    def config_exists(self) -> bool:
-        return self.config.exists()
 
     def artifacts_exist(self) -> bool:
         """Check if artifacts folder exists."""

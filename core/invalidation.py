@@ -3,11 +3,15 @@ Config-based invalidation logic.
 
 Tracks which config parameters affect which stages.
 Determines what needs rerunning when config changes.
+
+This enables smart caching: only re-run stages when their
+relevant config parameters have changed.
 """
 
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from core.paths import ProjectPaths
 
@@ -43,15 +47,9 @@ PARAM_INVALIDATES = {
     "refine.morph_threshold_pct": ["refine"],
     "refine.morph_open_size": ["refine"],
     "refine.morph_close_size": ["refine"],
-
-    # Scoring params don't invalidate artifacts
-    "anomaly_score.method": [],
-    "anomaly_score.min_percentile": [],
-    "anomaly_score.max_percentile": [],
-    "anomaly_score.cmap": [],
 }
 
-# STAGE_ORDER = ["segment", "crop", ]
+# STAGE_ORDER = ["segment"]
 STAGE_ORDER = ["segment", "crop", "embed", "bank", "heatmap", "refine"]
 
 # Map stages to their artifact directories
@@ -74,7 +72,7 @@ def get_stage_params(stage: str) -> list[str]:
     return sorted(params)
 
 
-def get_param_value(cfg: dict, param_path: str):
+def get_param_value(cfg: dict[str, Any], param_path: str) -> Any:
     """Get nested config value from dot-notation path."""
     keys = param_path.split(".")
     value = cfg
@@ -86,7 +84,7 @@ def get_param_value(cfg: dict, param_path: str):
     return value
 
 
-def compute_stage_hash(cfg: dict, stage: str) -> str:
+def compute_stage_hash(cfg: dict[str, Any], stage: str) -> str:
     """Compute hash of config params relevant to a stage."""
     params = get_stage_params(stage)
     values = {p: get_param_value(cfg, p) for p in params}
@@ -102,14 +100,14 @@ def load_stored_hash(paths: ProjectPaths, stage: str) -> str | None:
     return None
 
 
-def save_hash(paths: ProjectPaths, stage: str, hash_value: str):
+def save_hash(paths: ProjectPaths, stage: str, hash_value: str) -> None:
     """Save hash for a stage."""
     hash_path = paths.config_hash(stage)
     hash_path.parent.mkdir(parents=True, exist_ok=True)
     hash_path.write_text(hash_value)
 
 
-def compute_invalid_stages(paths: ProjectPaths, cfg: dict) -> list[str]:
+def compute_invalid_stages(paths: ProjectPaths, cfg: dict[str, Any]) -> list[str]:
     """
     Compare current config against stored hashes.
     Returns list of stages that need rerunning (with cascade).
@@ -135,7 +133,7 @@ def compute_invalid_stages(paths: ProjectPaths, cfg: dict) -> list[str]:
     return []
 
 
-def invalidate_stage_artifacts(paths: ProjectPaths, stage: str):
+def invalidate_stage_artifacts(paths: ProjectPaths, stage: str) -> None:
     """Delete artifact directory for a stage."""
     import shutil
 

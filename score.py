@@ -38,13 +38,13 @@ from core.registry import generate_run_id
 
 
 def score_project(
-    project: str,
-    method: str | None = None,
-    min_pct: float | None = None,
-    max_pct: float | None = None,
-    pixel_sample: int | None = None,
-    save: bool = True,
-    verbose: bool = True,
+        project: str,
+        method: str | None = None,
+        min_pct: float | None = None,
+        max_pct: float | None = None,
+        pixel_sample: int | None = None,
+        save: bool = True,
+        verbose: bool = True,
 ) -> dict | None:
     """
     Score a project using cached refined heatmaps.
@@ -71,12 +71,7 @@ def score_project(
     except Exception:
         map_area = np.nan
 
-    # Use config section "score" if present, otherwise fall back to older "anomaly_score"
-    score_cfg = cfg.get("score")
-    if score_cfg is None:
-        score_cfg = cfg.setdefault("anomaly_score", {})
-    else:
-        score_cfg = cfg.setdefault("score", score_cfg)
+    score_cfg = cfg.get("score", {})
 
     score_cfg["mode"] = "image_heatmap"
     score_cfg["heatmap_source"] = "refined"
@@ -99,7 +94,9 @@ def score_project(
     pixel_sample = int(pixel_sample) if pixel_sample is not None else None
 
     if verbose:
+        print(f"\n{'=' * 60}")
         print(f"Scoring project: {project}")
+        print(f"{'=' * 60}")
         print("  Heatmap source: refined (forced)")
         print(f"  Method: {method}")
         print(f"  Percentile band: {min_pct} - {max_pct}")
